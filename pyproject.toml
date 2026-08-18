@@ -1,0 +1,35 @@
+[project]
+name = "call-me-maybe"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "fathe4wiin@uVM", email = "fathibilal.04@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "llm-sdk",
+    "numpy>=2.5.2",
+    "pydantic>=2.13.4",
+]
+
+[project.scripts]
+call-me-maybe = "call_me_maybe:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = [
+    "llm_sdk",
+]
+
+[tool.uv.sources]
+llm-sdk = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "mypy>=2.3.1",
+]
