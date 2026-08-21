@@ -21,27 +21,32 @@ Ignore `src/call_me_maybe/` (uv default). That is not the subject entry point.
 
 ---
 
-## Phase 1 — parsing (do this first, no LLM)
+## Phase 1 — parsing (done)
 
-- [ ] Confirm `src/` is a package: from the venv, `python -m src` runs (even if it only hits `pass`).
-- [ ] CLI in `cli.py`, called from `__main__.py`
+- [x] Confirm `src/` is a package: from the venv, `python -m src` runs
+- [x] CLI in `cli.py`, called from `__main__.py`
   - Flags: `--functions_definition`, `--input`, `--output`
-  - Defaults: `data/input/` and `data/output/`
-  - The PDF names the default output file two ways (`function_calling_results.json` vs `function_calls.json`). Pick one when `--output` is omitted. `--output` always wins when given.
-- [ ] Pydantic models in `models.py` (every class you write must be pydantic)
-  - Function catalog: `name`, `description`, `parameters` (map of name → `{type}`), `returns`
-  - Tests: list of objects with `prompt`
-  - Output record: `prompt`, `name`, `parameters` (fill later)
-- [ ] Load + validate in `load.py`
-  - Open files with a context manager, `json.load`, then pydantic
-  - Missing file / unreadable / invalid JSON: clear error, exit, no traceback
-- [ ] Sanity check, still no model
-  - Print how many functions and how many prompts loaded
-  - Confirm parameter types (`number` vs `string`)
-  - Do **not** call `Small_LLM_Model()` yet
-  - Parser must follow the schema, not the sample function names (reviewers swap the JSON)
+  - Defaults: `data/input/functions_definition.json`, `data/input/function_calling_tests.json`, `data/output/function_calling_results.json`
+- [x] Pydantic models in `models.py`
+- [x] Load + validate in `load.py` (missing / invalid JSON → one error line, exit 1)
+- [x] Sanity check prints function signatures and prompt count — still no LLM
 
-Parsing is done when `python -m src` loads both JSON files through pydantic and fails cleanly on a broken file.
+Check it: `uv run python -m src` and `uv run python -m src --help`.
+Break it: point `--input` at a missing file or at the catalog JSON.
+
+---
+
+## Next — first LLM contact (do this before the full decoder)
+
+This is the step after parsing. Still **not** the whole project.
+
+- [ ] In a scratch script or a new `src/` module, construct `Small_LLM_Model()` once (first run downloads Qwen)
+- [ ] `encode` a short string; print the token ids; `decode` them back
+- [ ] Turn those ids into a `list[int]` (encode returns a 2-D tensor) and call `get_logits_from_input_ids`
+- [ ] Find the index with the highest logit; `decode` that single token
+- [ ] Open `get_path_to_vocab_file()` (and if needed `get_path_to_tokenizer_file()`) and look at how `{`, `"`, a digit, and a space are stored
+
+Goal: you can explain “prompt → ids → logits → next token” out loud. Then start Phase 3 (masking).
 
 ---
 
