@@ -41,7 +41,7 @@ class CliArgs(BaseModel):
             "--output",
             type=Path,
             default=DEFAULT_OUTPUT,
-            help="Where to write results later (default: %(default)s)",
+            help="JSON array of function calls (default: %(default)s)",
         )
         args = parser.parse_args()
         return cls(

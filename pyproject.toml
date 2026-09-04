@@ -1,16 +1,16 @@
 [project]
 name = "call-me-maybe"
 version = "0.1.0"
-description = "Add your description here"
+description = "Constrained decoding for LLM function calling"
 readme = "README.md"
 authors = [
     { name = "fathe4wiin@uVM", email = "fathibilal.04@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "llm-sdk",
-    "numpy>=2.5.2",
-    "pydantic>=2.13.4",
+    "numpy>=2.0.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.scripts]
@@ -33,3 +33,6 @@ dev = [
     "flake8>=7.3.0",
     "mypy>=2.3.1",
 ]
+
+[tool.mypy]
+exclude = ["llm_sdk", "src/call_me_maybe", ".venv", "main.py"]
