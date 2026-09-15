@@ -36,3 +36,9 @@ dev = [
 
 [tool.mypy]
 exclude = ["llm_sdk", "src/call_me_maybe", ".venv", "main.py"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"
+extraPaths = [".", "llm_sdk", "moulinette"]

@@ -37,6 +37,8 @@ class JsonLoader(BaseModel):
             self._fail(f"cannot read file ({exc.strerror})")
         except json.JSONDecodeError as exc:
             self._fail(f"invalid JSON ({exc.msg} at line {exc.lineno})")
+        except Exception as exc:
+            self._fail(f"unexpected error ({exc.__class__.__name__}: {exc})")
 
     def _load_list(self, item_model: type[TModel], label: str) -> list[TModel]:
         raw = self.load_raw()
