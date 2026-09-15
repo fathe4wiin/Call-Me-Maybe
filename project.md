@@ -18,7 +18,7 @@ flowchart LR
     U["User: What is the sum of 40 and 2?"] --> T["Traditional LLM"]
     U --> F["Function calling"]
     T --> P["The sum of 40 and 2 is 42."]
-    F --> J["{ name: fn_add_numbers, parameters: { a: 40, b: 2 } }"]
+    F --> J["{ name: fn_add_numbers, parameters: { a: 40.0, b: 2.0 } }"]
 ```
 
 That JSON is what a later system would execute. This program never runs
@@ -152,6 +152,13 @@ One object per prompt, **exactly** these keys:
 - `name` (string) — catalog function
 - `parameters` (object) — all required args, correct types
 
+JSON does not distinguish `2` from `2.0`. `json.loads` turns a number
+without a decimal into a Python `int`. Catalog type `number` is a
+`float`: after decoding, those arguments are cast with `float()` so the
+written file contains `2.0`, not `2`. Type `integer` stays `int`. A
+grader that calls the real Python function with `isinstance(..., float)`
+rejects the integer form.
+
 Validation (subject V.4.2): valid JSON, no extra keys, no prose, types
 match the catalog, all required arguments present.
 
@@ -224,7 +231,7 @@ flowchart TB
 | `src/load.py` | Open + `json.load` + pydantic. Fail with one stderr line. |
 | `src/prompt.py` | Steering text + forced prefix `{"name":"` |
 | `src/vocabulary.py` | Token id → UTF-8 text; first-character index |
-| `src/constraints.py` | Character-level JSON + schema state machine |
+| `src/constraints.py` | Character-level JSON + schema state machine; `coerce_parameters` |
 | `src/generate.py` | Encode, logits, mask, argmax loop |
 | `src/save.py` | Write the results array |
 | `llm_sdk/` | Public wrapper around Qwen (copied next to `src/`) |
@@ -386,7 +393,7 @@ At each step:
 ```mermaid
 flowchart TD
     S["DecodeState.start + encode ids"] --> Q{"is_complete?"}
-    Q -->|yes| OUT["json.loads → OutputRecord"]
+    Q -->|yes| OUT["json.loads → coerce types → OutputRecord"]
     Q -->|no| L["get_logits_from_input_ids"]
     L --> K["legal_token_ids"]
     K --> P["pick_token"]
@@ -448,8 +455,8 @@ flowchart TD
 | `NAME` | Next character of at least one catalog name, or `"` once the buffer equals a name |
 | `LITERAL` | Exact next character of the forced fragment |
 | `VALUE` string | `"`, body / escapes (`\"`, `\\`, `\uXXXX`, …), then closing `"` |
-| `VALUE` number | optional `-`, digits, optional `.` + digits |
-| `VALUE` integer | optional `-`, digits, no `.` |
+| `VALUE` number | optional `-`, digits, optional `.` + digits. After parse, ints become floats |
+| `VALUE` integer | optional `-`, digits, no `.`. After parse, values stay ints |
 | `VALUE` boolean | prefix of `true` or `false` |
 | After a finished number / bool | `,` or `}` re-dispatched into the next literal |
 | `DONE` | Stop |
@@ -463,6 +470,10 @@ flowchart TD
 | `integer`, `int` | integer |
 | `boolean`, `bool` | boolean |
 | anything else | string (safe default) |
+
+After `json.loads`, `coerce_parameters` walks the chosen function’s
+schema: `number` → `float`, `integer` → `int`. That is what turns a
+decoded `2` into the `2.0` written to `--output`.
 
 The machine is **character-level**. Tokens are multi-character. `accepts`
 snapshots mutable fields, tries `feed_char` for every character, then
@@ -529,11 +540,12 @@ Typical path:
 1. Prefix already present: `{"name":"`
 2. `NAME` — model emits `fn_add_numbers` (other names stay legal until they diverge)
 3. `LITERAL` — forced `,"parameters":{"a":`
-4. `VALUE` number — model emits `2` or `2.0`
+4. `VALUE` number — model emits `2` or `2.0` (both are legal JSON numbers)
 5. `LITERAL` — forced `,"b":`
 6. `VALUE` number — model emits `3`
 7. `LITERAL` — forced `}}`
-8. `json.loads` → `{prompt, name, parameters}`
+8. `json.loads` then `coerce_parameters` → `{prompt, name, parameters}`
+   with `{"a": 2.0, "b": 3.0}` even if the model omitted `.0`
 
 The same loop handles `fn_greet` (one string), `fn_reverse_string`,
 `fn_get_square_root`, and the three-string regex function.

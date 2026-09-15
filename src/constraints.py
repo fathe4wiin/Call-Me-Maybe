@@ -81,6 +81,64 @@ def normalize_kind(raw: str) -> ParamKind:
     return ParamKind.STRING
 
 
+def coerce_parameter_value(kind: ParamKind, value: object) -> object:
+    """Cast a JSON-decoded value to the Python type the catalog implies.
+
+    ``json.loads`` turns a JSON ``2`` into ``int``. Catalog ``number``
+    parameters are floats; ``integer`` parameters stay ints. Booleans are
+    excluded from the numeric branches because ``bool`` is a subclass of
+    ``int``.
+
+    Args:
+        kind: Normalized parameter type.
+        value: Value produced by ``json.loads``.
+
+    Returns:
+        ``value``, possibly converted to ``float`` or ``int``.
+    """
+    if kind is ParamKind.NUMBER:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return value
+        return float(value)
+    if kind is ParamKind.INTEGER:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return value
+        return int(value)
+    if kind is ParamKind.STRING or kind is ParamKind.BOOLEAN:
+        return value
+    assert_never(kind)
+
+
+def coerce_parameters(
+    function: FunctionDefinition,
+    parameters: object,
+) -> dict[str, object]:
+    """Apply ``coerce_parameter_value`` to each argument of *function*.
+
+    Args:
+        function: Catalog entry whose schema types to follow.
+        parameters: Decoded ``parameters`` object.
+
+    Returns:
+        A new dict with catalog keys coerced. Unknown keys are kept as-is.
+
+    Raises:
+        ValueError: If *parameters* is not a JSON object.
+    """
+    if not isinstance(parameters, dict):
+        raise ValueError("decoder produced a non-object parameters value")
+    typed: dict[str, object] = {}
+    for key, value in parameters.items():
+        if not isinstance(key, str):
+            continue
+        schema = function.parameters.get(key)
+        if schema is None:
+            typed[key] = value
+            continue
+        typed[key] = coerce_parameter_value(normalize_kind(schema.type), value)
+    return typed
+
+
 class DecodeState(BaseModel):
     """Mutable constrained-decoding state for one function call."""
 

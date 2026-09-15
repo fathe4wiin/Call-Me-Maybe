@@ -8,7 +8,7 @@ import sys
 import numpy as np
 from llm_sdk import Small_LLM_Model
 
-from .constraints import DecodeState
+from .constraints import DecodeState, coerce_parameters
 from .models import FunctionDefinition, OutputRecord, TestPrompt
 from .prompt import build_generation_prompt
 from .vocabulary import Vocabulary
@@ -162,7 +162,8 @@ def generate_call(
 
     Raises:
         RuntimeError: If the decoder cannot produce parseable JSON.
-        ValueError: If the finished text is not a JSON object.
+        ValueError: If the finished text is not a JSON object, or the
+            decoded name is not in the catalog.
     """
     prompt = build_generation_prompt(functions, user_prompt)
     ids = tensor_to_ids(model.encode(prompt))
@@ -184,11 +185,15 @@ def generate_call(
     parsed: object = json.loads(state.generated)
     if not isinstance(parsed, dict):
         raise ValueError("decoder produced a non-object JSON value")
+    name = parsed.get("name")
+    chosen = next((item for item in functions if item.name == name), None)
+    if chosen is None:
+        raise ValueError("decoder produced an unknown function name")
     return OutputRecord.model_validate(
         {
             "prompt": user_prompt,
-            "name": parsed.get("name"),
-            "parameters": parsed.get("parameters"),
+            "name": name,
+            "parameters": coerce_parameters(chosen, parsed.get("parameters")),
         }
     )
 
