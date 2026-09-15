@@ -13,7 +13,7 @@ flowchart TD
     C --> E["4. Load model + vocab"]
     D --> E
     E --> F["5. For each prompt: constrained decode"]
-    F --> G["6. Write results JSON"]
+    F --> G["6. Coerce types + write results JSON"]
 ```
 
 | Step | File | Function |
@@ -22,8 +22,9 @@ flowchart TD
 | CLI | `src/cli.py` | `CliArgs.parse` |
 | Catalog | `src/load.py` | `JsonLoader.load_functions` |
 | Prompts | `src/load.py` | `JsonLoader.load_prompts` |
-| Pipeline | `src/decoder.py` | `run_pipeline` → `decode_all` |
-| One call | `src/decoder.py` | `generate_call` |
+| Pipeline | `src/generate.py` | `run_call_decoding` |
+| One call | `src/generate.py` | `generate_call` |
+| Coerce types | `src/constraints.py` | `coerce_parameters` |
 | Write | `src/save.py` | `save_results` |
 
 ---
@@ -81,25 +82,28 @@ flowchart TD
 | Catalog shape | `src/models.py` | `FunctionDefinition`, `ParamSchema` |
 | Prompt shape | `src/models.py` | `TestPrompt` |
 
-Missing file, bad JSON, or wrong schema: one line
-`error: <path>: <reason>` on stderr, exit 1. Empty catalog also fails in
+Missing file, bad JSON, wrong schema, or any other read error: one line
+`error: <path>: <reason>` on stderr, exit 1. `load_raw` also catches leftover
+exceptions as `unexpected error (<type>: ...)`. Empty catalog also fails in
 `main`.
+
+After a successful load, `main` prints each catalog entry as
+`name(param: type, ...) -> return_type` and the prompt count.
 
 ---
 
 ## Step 3 — Load the LLM and the vocabulary (once)
 
-`main` calls `run_pipeline`, which wraps `decode_all` so any later exception
+`main` calls `run_call_decoding`, which wraps the rest so any later exception
 becomes `error: constrained decoding failed (...)`.
 
-`decode_all` constructs **one** `Small_LLM_Model` (Qwen3-0.6B) and one
+`run_call_decoding` constructs **one** `Small_LLM_Model` (Qwen3-0.6B) and one
 vocabulary table, then loops over prompts.
 
 ```mermaid
 flowchart LR
-    RP["run_pipeline"] --> DA["decode_all"]
-    DA --> M["Small_LLM_Model"]
-    DA --> V["load_vocabulary"]
+    RP["run_call_decoding"] --> M["load_model"]
+    RP --> V["load_vocabulary"]
     V --> VF["Vocabulary.from_file"]
     M --> Loop["generate_call per prompt"]
     VF --> Loop
@@ -107,11 +111,11 @@ flowchart LR
 
 | Piece | File | Function |
 |---|---|---|
-| Catch errors | `src/decoder.py` | `run_pipeline` |
-| Shared model | `src/decoder.py` | `decode_all` |
+| Catch errors | `src/generate.py` | `run_call_decoding` |
+| Shared model | `src/generate.py` | `load_model` |
 | LLM wrapper | `llm_sdk` | `Small_LLM_Model.__init__` |
 | Vocab path | `llm_sdk` | `get_path_to_vocab_file` (fallback: `get_path_to_tokenizer_file`) |
-| Load table | `src/decoder.py` | `load_vocabulary` |
+| Load table | `src/generate.py` | `load_vocabulary` |
 | Parse vocab JSON | `src/vocabulary.py` | `Vocabulary.from_file` |
 | Piece → UTF-8 | `src/vocabulary.py` | `token_piece_to_text` |
 | BPE byte map | `src/vocabulary.py` | `_bytes_to_unicode` |
@@ -127,25 +131,27 @@ Public SDK only: `encode`, `get_logits_from_input_ids`, path helpers. No
 ## Step 4 — Build the steering prompt
 
 For each `TestPrompt`, `generate_call` builds text that lists every catalog
-function (name, description, parameter types) plus the user request, then
-appends the JSON prefix `{"name":"`.
+function (name, description, parameter types, return type) plus the user
+request, then appends a newline and the JSON prefix `{"name":"`.
 
 ```mermaid
 flowchart LR
-    C["catalog"] --> BP["build_prompt"]
+    C["catalog"] --> BP["build_steering_prompt"]
     U["user prompt"] --> BP
     BP --> TXT["plain text"]
-    TXT --> PRE["+ JSON_PREFIX"]
+    TXT --> GP["build_generation_prompt"]
+    GP --> PRE["+ JSON_PREFIX"]
     PRE --> ENC["Small_LLM_Model.encode"]
     ENC --> IDS["tensor_to_ids"]
 ```
 
 | Piece | File | Function |
 |---|---|---|
-| Text | `src/prompt.py` | `build_prompt` |
-| Prefix constant | `src/constraints.py` | `JSON_PREFIX` |
+| Steering text | `src/prompt.py` | `build_steering_prompt` |
+| Prefix + join | `src/prompt.py` | `build_generation_prompt` |
+| Prefix constant | `src/prompt.py` | `JSON_PREFIX` |
 | Tokenize | `llm_sdk` | `Small_LLM_Model.encode` |
-| Tensor → `list[int]` | `src/decoder.py` | `tensor_to_ids` |
+| Tensor → `list[int]` | `src/generate.py` | `tensor_to_ids` |
 | Start machine | `src/constraints.py` | `DecodeState.start` |
 
 The prompt only **steers** which legal function and values the model prefers.
@@ -167,33 +173,42 @@ This is the core. Until the JSON object is closed (or 256 new tokens),
 ```mermaid
 flowchart TD
     S["DecodeState.start + input ids"] --> Q{"DecodeState.is_complete?"}
-    Q -->|yes| OUT["json.loads → OutputRecord"]
+    Q -->|yes| PARSE["json.loads"]
     Q -->|no| L["Small_LLM_Model.get_logits_from_input_ids"]
     L --> K["legal_token_ids"]
     K --> P["pick_token"]
     P -->|no legal token| E["_emergency_finish"]
     P -->|id| A["Vocabulary.text_of + DecodeState.advance"]
     A --> Q
-    E --> OUT
+    E --> PARSE
+    PARSE --> COERCE["coerce_parameters"]
+    COERCE --> OUT["OutputRecord"]
 ```
 
 | Piece | File | Function |
 |---|---|---|
-| Loop | `src/decoder.py` | `generate_call` |
+| Loop | `src/generate.py` | `generate_call` |
 | Logits | `llm_sdk` | `Small_LLM_Model.get_logits_from_input_ids` |
 | First-char filter | `src/vocabulary.py` | `Vocabulary.candidate_ids` |
 | Id → text | `src/vocabulary.py` | `Vocabulary.text_of` |
-| Legal set | `src/decoder.py` | `legal_token_ids` |
+| Legal set | `src/generate.py` | `legal_token_ids` |
 | Trial without commit | `src/constraints.py` | `DecodeState.accepts` |
-| Mask + argmax | `src/decoder.py` | `pick_token` |
+| Mask + argmax | `src/generate.py` | `pick_token` |
 | Commit text | `src/constraints.py` | `DecodeState.advance` |
 | Done? | `src/constraints.py` | `DecodeState.is_complete` |
-| Force leftover braces | `src/decoder.py` | `_emergency_finish` |
+| Force leftover braces | `src/generate.py` | `_emergency_finish` |
+| Catalog types | `src/constraints.py` | `coerce_parameters` |
 | Typed result | `src/models.py` | `OutputRecord.model_validate` |
 
 `legal_token_ids` asks `DecodeState.allowed_first_chars` so it does not test
 all ~150k tokens when only a few first characters are legal (for example `{`
 is already emitted, so NAME only allows letters that continue catalog names).
+
+After `json.loads`, `generate_call` looks up the decoded name in the catalog
+and runs `coerce_parameters`. `json.loads` turns JSON `2` into Python
+`int`; catalog `number` parameters are written as floats (`2.0`), while
+`integer` parameters stay ints. Booleans are skipped in those numeric
+branches because `bool` is a subclass of `int`.
 
 ---
 
@@ -253,6 +268,16 @@ Who decides what:
 | Braces, quotes, keys, colons | Decoder | `_feed_literal` (exact string) |
 | Argument values | LLM, typed by schema | `_feed_value` |
 
+`normalize_kind` maps catalog type strings onto `ParamKind`:
+
+| Catalog type | Kind | Value grammar |
+|---|---|---|
+| `string`, `str` | `STRING` | JSON string (escapes, max 200 chars) |
+| `number`, `float`, `double` | `NUMBER` | optional minus, digits, optional `.frac` |
+| `integer`, `int` | `INTEGER` | same, but `.` is rejected |
+| `boolean`, `bool` | `BOOLEAN` | `true` / `false` |
+| anything else | `STRING` | treated as a string |
+
 After a finished number or boolean, `,` or `}` is **re-dispatched** into the
 next literal, so a token such as `3}` can end the value and close the object
 in one step.
@@ -286,7 +311,7 @@ flowchart LR
 
 ## Worked example
 
-Prompt: `What is the sum of 2 and 3?`
+Prompt: `What is the product of 3 and 5?`
 
 ```mermaid
 sequenceDiagram
@@ -309,14 +334,21 @@ sequenceDiagram
 Typical machine path:
 
 1. Prefix already in the prompt: `{"name":"`
-2. NAME: model emits `fn_add_numbers` (other names are still allowed until
+2. NAME: model emits `fn_multiply_numbers` (other names are still allowed until
    they diverge)
 3. LITERAL: forced `,"parameters":{"a":`
-4. VALUE number: model emits `2` (or `2.0`)
+4. VALUE number: model emits `3` (or `3.0`); `.` is legal because `a` is
+   `number`, not `integer`
 5. LITERAL: forced `,"b":`
-6. VALUE number: model emits `3`
+6. VALUE number: model emits `5`
 7. LITERAL: forced `}}`
-8. `json.loads` → `{prompt, name: fn_add_numbers, parameters: {a, b}}`
+8. `json.loads` → `{name, parameters: {a: 3, b: 5}}` (ints)
+9. `coerce_parameters` → `{a: 3.0, b: 5.0}` because the catalog type is
+   `number`
+10. `OutputRecord` → `{prompt, name: fn_multiply_numbers, parameters: {a, b}}`
+
+An integer parameter such as `n` on `fn_is_even` stays an `int` (`4`, not
+`4.0`) and cannot contain a decimal point during decoding.
 
 ---
 
@@ -334,19 +366,20 @@ flowchart TB
         PR["src/prompt.py"]
         VOC["src/vocabulary.py"]
         CON["src/constraints.py"]
-        DEC["src/decoder.py"]
+        GEN["src/generate.py"]
     end
     subgraph sdk["Provided"]
         SDK["llm_sdk.Small_LLM_Model"]
     end
     MAIN["src/__main__.py"] --> CLI
     MAIN --> LOAD
-    MAIN --> DEC
+    MAIN --> GEN
     MAIN --> SAVE
     LOAD --> MOD
     SAVE --> MOD
-    DEC --> PR
-    DEC --> VOC
-    DEC --> CON
-    DEC --> SDK
+    GEN --> PR
+    GEN --> VOC
+    GEN --> CON
+    GEN --> SDK
+    CON --> PR
 ```
