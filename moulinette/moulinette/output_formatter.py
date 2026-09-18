@@ -12,7 +12,7 @@ try:
 except ImportError:
     COLORS_AVAILABLE = False
 
-# Check if we're in a terminal that supports colors
+
 def _supports_color() -> bool:
     if not COLORS_AVAILABLE:
         return False
@@ -26,7 +26,7 @@ def _supports_color() -> bool:
 class ColoredOutput:
     """Utility class for consistent formatted terminal output during grading."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.use_color = _supports_color()
 
     def _color(self, text: str, fore: str = "", style: str = "") -> str:

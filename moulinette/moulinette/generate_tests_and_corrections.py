@@ -6,7 +6,7 @@ from typing import Any, List, Callable
 
 from pydantic import BaseModel
 
-from moulinette.functions_definition import exercises, get_exercises_by_visibility
+from moulinette.functions_definition import get_exercises_by_visibility
 
 
 class Correction(BaseModel):

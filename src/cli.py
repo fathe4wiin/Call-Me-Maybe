@@ -23,7 +23,9 @@ class CliArgs(BaseModel):
     def parse(cls) -> CliArgs:
         """Parse argv into three paths. Does not open any files."""
         parser = argparse.ArgumentParser(
-            description="Translate natural-language prompts into function calls.",
+            description=(
+                "Translate natural-language prompts into function calls."
+            ),
         )
         parser.add_argument(
             "--functions_definition",

@@ -2,7 +2,7 @@
 # ABOUTME: Used to generate function definitions that students receive as input.
 
 import json
-from typing import Dict, List, Callable, get_type_hints
+from typing import Dict, Callable, get_type_hints
 
 from pydantic import BaseModel
 

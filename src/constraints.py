@@ -178,7 +178,7 @@ class DecodeState(BaseModel):
         return self._chosen().name
 
     def accepts(self, text: str) -> bool:
-        """Return True if *text* can be appended without breaking the schema."""
+        """Return True if *text* can be appended without a schema break."""
         if not text:
             return False
         snap = self._snapshot()
@@ -337,7 +337,7 @@ class DecodeState(BaseModel):
         if action is AfterLiteral.DONE:
             self.phase = Phase.DONE
             return
-        assert_never(action) #assert is used to ensure that the action is one of the allowed values else raises an error (OP else)
+        assert_never(action)
 
     def _begin_param_or_close(self) -> None:
         """Emit the next ``\"key\":`` literal, or close the JSON object."""
@@ -451,7 +451,7 @@ class DecodeState(BaseModel):
         return False
 
     def _feed_bool(self, char: str) -> bool:
-        """Accept the next character of ``true`` / ``false``, or a terminator."""
+        """Accept the next ``true`` / ``false`` character, or a terminator."""
         if char in self._value_terminators() and self.bool_buffer in (
             "true",
             "false",

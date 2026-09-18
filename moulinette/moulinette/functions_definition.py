@@ -143,7 +143,10 @@ exercises: dict[Callable, dict[str, Any]] = {
                 },
             },
             {
-                "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
+                "prompt": (
+                    "Substitute the word 'cat' with 'dog' in "
+                    "'The cat sat on the mat with another cat'"
+                ),
                 "fn_args": {
                     "source_string": "The cat sat on the mat with another cat",
                     "regex": "\\bcat\\b",
@@ -187,7 +190,10 @@ exercises: dict[Callable, dict[str, Any]] = {
                 }
             },
             {
-                "prompt": "Run the query 'INSERT INTO logs VALUES (1, 2, 3)' on the system database",
+                "prompt": (
+                    "Run the query 'INSERT INTO logs VALUES (1, 2, 3)' "
+                    "on the system database"
+                ),
                 "fn_args": {
                     "query": "INSERT INTO logs VALUES (1, 2, 3)",
                     "database": "system"

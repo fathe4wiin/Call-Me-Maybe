@@ -1,20 +1,50 @@
-"""Constrained decoding: mask illegal tokens until the JSON object is closed."""
+"""Constrained decoding: mask illegal tokens until JSON is closed."""
 
 from __future__ import annotations
 
 import json
 import sys
+from typing import Protocol, cast
 
+import llm_sdk
 import numpy as np
-from llm_sdk import Small_LLM_Model
 
 from .constraints import DecodeState, coerce_parameters
 from .models import FunctionDefinition, OutputRecord, TestPrompt
-from .prompt import build_generation_prompt
+from .prompt import (
+    UNKNOWN_FUNCTION_NAME,
+    build_generation_prompt,
+    with_unknown_function,
+)
 from .vocabulary import Vocabulary
 
 _MAX_NEW_TOKENS = 256
 _EMERGENCY_CHARS = 512
+
+
+class SmallLLMModel(Protocol):
+    """Public ``llm_sdk.Small_LLM_Model`` methods used by this program."""
+
+    def encode(self, text: str) -> object:
+        """Tokenize *text* into a 2-D tensor-like object."""
+        ...
+
+    def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
+        """Return next-token logits for *input_ids*."""
+        ...
+
+    def get_path_to_vocab_file(self) -> str:
+        """Return the on-disk path to ``vocab.json``."""
+        ...
+
+    def get_path_to_tokenizer_file(self) -> str:
+        """Return the on-disk path to ``tokenizer.json``."""
+        ...
+
+
+def _sdk_model_class() -> type[SmallLLMModel]:
+    """Return the public SDK constructor without naming private attributes."""
+    return cast("type[SmallLLMModel]", getattr(llm_sdk, "Small_LLM_Model"))
 
 
 def tensor_to_ids(encoded: object) -> list[int]:
@@ -40,16 +70,16 @@ def tensor_to_ids(encoded: object) -> list[int]:
     raise TypeError("encode() returned an unexpected shape")
 
 
-def load_model() -> Small_LLM_Model:
+def load_model() -> SmallLLMModel:
     """Construct Qwen3-0.6B once. First call downloads the weights."""
     print(
         "loading Qwen/Qwen3-0.6B (first run downloads weights)...",
         flush=True,
     )
-    return Small_LLM_Model()
+    return _sdk_model_class()()
 
 
-def load_vocabulary(model: Small_LLM_Model) -> Vocabulary:
+def load_vocabulary(model: SmallLLMModel) -> Vocabulary:
     """Load token text via the public SDK path helpers.
 
     Args:
@@ -144,7 +174,7 @@ def _emergency_finish(state: DecodeState) -> None:
 
 
 def generate_call(
-    model: Small_LLM_Model,
+    model: SmallLLMModel,
     vocab: Vocabulary,
     functions: list[FunctionDefinition],
     user_prompt: str,
@@ -154,8 +184,9 @@ def generate_call(
     Args:
         model: LLM wrapper (logits + encode only).
         vocab: Tokenizer vocabulary.
-        functions: Allowed tools.
-        user_prompt: Natural-language request.
+        functions: Catalog tools. ``unknown`` is added as a fallback.
+        user_prompt: Natural-language request. Empty strings skip the LLM
+            and return ``unknown``.
 
     Returns:
         An ``OutputRecord`` ready to write to disk.
@@ -163,11 +194,20 @@ def generate_call(
     Raises:
         RuntimeError: If the decoder cannot produce parseable JSON.
         ValueError: If the finished text is not a JSON object, or the
-            decoded name is not in the catalog.
+            decoded name is not in the catalog and is not ``unknown``.
     """
+    if user_prompt.strip() == "":
+        return OutputRecord.model_validate(
+            {
+                "prompt": user_prompt,
+                "name": UNKNOWN_FUNCTION_NAME,
+                "parameters": {},
+            }
+        )
+    allowed = with_unknown_function(functions)
     prompt = build_generation_prompt(functions, user_prompt)
     ids = tensor_to_ids(model.encode(prompt))
-    state = DecodeState.start(functions)
+    state = DecodeState.start(allowed)
     new_tokens = 0
     while not state.is_complete() and new_tokens < _MAX_NEW_TOKENS:
         logits = model.get_logits_from_input_ids(ids)
@@ -186,7 +226,7 @@ def generate_call(
     if not isinstance(parsed, dict):
         raise ValueError("decoder produced a non-object JSON value")
     name = parsed.get("name")
-    chosen = next((item for item in functions if item.name == name), None)
+    chosen = next((item for item in allowed if item.name == name), None)
     if chosen is None:
         raise ValueError("decoder produced an unknown function name")
     return OutputRecord.model_validate(

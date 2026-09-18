@@ -19,7 +19,7 @@ from moulinette.output_formatter import ColoredOutput
 class Moulinette:
     """CLI for generating function calling exercises and grading student submissions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.output = ColoredOutput()
 
     def prepare_exercises(
@@ -163,7 +163,8 @@ class Moulinette:
                 self.output.actual("Student called", f"{fn_name}({fn_params})")
                 self.output.actual("Student result", student_output)
                 # Show what was expected
-                self.output.expected("Expected call", f"{correction['name']}({correction['parameters']})")
+                expected_call = f"{correction['name']}({correction['parameters']})"
+                self.output.expected("Expected call", expected_call)
                 self.output.expected("Expected result", correction["expected_output"])
                 self.output.test_result(False, "wrong output")
                 continue

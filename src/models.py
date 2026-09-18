@@ -1,4 +1,4 @@
-"""Pydantic models for the function catalog, test prompts, and output records."""
+"""Pydantic models for the catalog, test prompts, and output records."""
 
 from pydantic import BaseModel, Field
 
@@ -6,14 +6,17 @@ from pydantic import BaseModel, Field
 class ParamSchema(BaseModel):
     """JSON object like ``{"type": "number"}`` or ``{"type": "string"}``."""
 
-    type: str = Field(description="JSON type name, e.g. number, string, boolean.")
+    type: str = Field(
+        min_length=1,
+        description="JSON type name, e.g. number, string, boolean.",
+    )
 
 
 class FunctionDefinition(BaseModel):
     """One tool from ``functions_definition.json``."""
 
-    name: str
-    description: str
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
     parameters: dict[str, ParamSchema]
     returns: ParamSchema
 

@@ -42,10 +42,14 @@ def main() -> None:
     catalog = JsonLoader(path=args.functions_definition).load_functions()
     prompts = JsonLoader(path=args.input).load_prompts()
 
-    print(f"loaded {len(catalog)} function(s) from {args.functions_definition}")
+    print(
+        f"loaded {len(catalog)} function(s) from "
+        f"{args.functions_definition}"
+    )
     for function in catalog:
         param_names = ", ".join(
-            f"{name}: {schema.type}" for name, schema in function.parameters.items()
+            f"{name}: {schema.type}"
+            for name, schema in function.parameters.items()
         )
         print(f"  - {function.name}({param_names}) -> {function.returns.type}")
 
