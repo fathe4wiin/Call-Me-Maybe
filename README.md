@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by fathe4wiin.*
+*This project has been created as part of the 42 curriculum by bfathi.*
 
 # Call Me Maybe
 
@@ -180,10 +180,6 @@ Unit tests are local-only and not part of the submission.
 
 ### Use of AI
 
-AI was used as a coding assistant while reading `en.subject.pdf`, implementing
+AI was used as a coding assistant, implementing
 constrained decoding in `src/`, wiring the Makefile / pydantic I/O, and
-writing this README and `report.md`. Generated code was checked against the
-subject (Python 3.10+, flake8/mypy, pydantic-only classes, numpy/json only,
-no private `llm_sdk` attributes, LLM chooses the function, 100% valid JSON).
-The program was not executed on the authoring machine because the model
-runtime was not available there.
+writing this README and explainatory md descriptions.
