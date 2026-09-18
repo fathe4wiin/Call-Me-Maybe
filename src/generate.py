@@ -225,7 +225,7 @@ def run_call_decoding(
             records.append(record)
             print(f"  {record.model_dump()}")
         return records
-    except SystemExit:
+    except (SystemExit, KeyboardInterrupt):
         raise
     except Exception as exc:
         print(f"error: constrained decoding failed ({exc})", file=sys.stderr)

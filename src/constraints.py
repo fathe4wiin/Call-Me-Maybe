@@ -337,7 +337,7 @@ class DecodeState(BaseModel):
         if action is AfterLiteral.DONE:
             self.phase = Phase.DONE
             return
-        assert_never(action)
+        assert_never(action) #assert is used to ensure that the action is one of the allowed values else raises an error (OP else)
 
     def _begin_param_or_close(self) -> None:
         """Emit the next ``\"key\":`` literal, or close the JSON object."""
