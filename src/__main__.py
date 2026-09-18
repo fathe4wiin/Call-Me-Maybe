@@ -79,3 +79,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("error: interrupted (SIGINT)", file=sys.stderr)
         raise SystemExit(130) from None
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        exit(1)
